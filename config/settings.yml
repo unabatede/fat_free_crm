@@ -109,7 +109,7 @@ task_calendar_with_time: false
   :associate_email_to_account : false            # Associate emails to the account (if has) of the contact or opportunity
   :crm_host                   : www.yourhost.com # Needed for notifications links
   :debug                      : false
-  
+  :include_quoted_text        : false
 
 # Main and Admin Tabs.
 #------------------------------------------------------------------------------

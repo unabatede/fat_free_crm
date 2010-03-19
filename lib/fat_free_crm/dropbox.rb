@@ -167,8 +167,9 @@ module FatFreeCRM
       detected_assets = []
       ASSETS.each do |asset|
         recipients.each do |recipient|
-          asset.to_s == "Lead" ? detected = asset.find(:first, :conditions => ['email = ? and status != ?', recipient, "converted"], :order => "updated_at DESC") : detected = asset.find_by_email(recipient)
-          detected_assets << detected unless detected.blank?
+          asset.to_s == "Lead" ? conditions = ['email = ? and status != ?', recipient, "converted"] : conditions = { :email => recipient }
+	        detecteds = asset.find(:all, :conditions => conditions)
+          detecteds.each { |detected| detected_assets << detected unless detected.blank? }
         end        
       end
       return nil if detected_assets.blank?
@@ -224,12 +225,12 @@ module FatFreeCRM
       end
       email.cc.blank? ? cc = "" : cc = email.cc.join(", ")      
       mediator_links = []
-      
+      body = get_body(email.body_plain)
       assets.each do |asset|
         if has_permissions_on(asset)  
           asset_type = asset.class.to_s
           @settings[:associate_email_to_account] == true && (asset_type == "Contact" || asset_type == "Opportunity") ? mediator = asset.account || asset : mediator = asset
-          Email.create(:imap_message_id => email.message_id, :user => @current_user, :mediator => mediator, :sent_from => email.from.first, :sent_to => sent_to, :cc => cc, :subject => email.subject, :body => email.body_plain, :received_at => email.date, :sent_at => email.date)
+          Email.create(:imap_message_id => email.message_id, :user => @current_user, :mediator => mediator, :sent_from => email.from.first, :sent_to => sent_to, :cc => cc, :subject => email.subject, :body => body, :received_at => email.date, :sent_at => email.date)
           archive
           mediator_links << url_for(:host => @settings[:crm_host], :controller => mediator.class.to_s.downcase.pluralize, :action => "show", :id => mediator.id)
           log("Added email to asset #{mediator.class.to_s} with name #{mediator.name}", email)
@@ -238,7 +239,7 @@ module FatFreeCRM
           log("Discarding... missing permissions in #{asset.class.to_s}=>#{asset.name} for user #{@current_user.username}", email)
         end
       end
-      notify(email, mediator_links) unless mediator_links.blank?
+      notify(email, mediator_links, body) unless mediator_links.blank?
     end
 
     def has_permissions_on(asset)
@@ -248,11 +249,18 @@ module FatFreeCRM
       
       return false    
     end
+    
+    def get_body(text)
+      return text if @settings[:include_quoted_text]      
+      new_lines = []
+      text.split("\n").each {|line| new_lines << line unless line.strip[0,1] == ">"}
+      new_lines.join("\n")
+    end
 
     # Notify users with the results of the operations (feedback from dropbox)
     #--------------------------------------------------------------------------------------      
-    def notify(email, mediator_links)      
-      ack_email = Notifier.create_dropbox_ack_notification(@current_user, @settings[:dropbox_email], email, mediator_links)
+    def notify(email, mediator_links, body)      
+      ack_email = Notifier.create_dropbox_ack_notification(@current_user, @settings[:dropbox_email], email, mediator_links, body)
       Notifier.deliver(ack_email)
     end
     
